@@ -115,49 +115,6 @@ function parseOcrText(text) {
     date = `${y.toString().padStart(4,"0")}-${dm[2].padStart(2,"0")}-${dm[1].padStart(2,"0")}`;
   }
 
-  // Thai bank slips often use month abbreviations, e.g. "22 ก.ย. 69".
-  if (!date) {
-    const thaiMonths = {
-      "ม.ค":1,"ก.พ":2,"มี.ค":3,"เม.ย":4,"พ.ค":5,"มิ.ย":6,
-      "ก.ค":7,"ส.ค":8,"ก.ย":9,"ต.ค":10,"พ.ย":11,"ธ.ค":12
-    };
-    const thaiDate = compact.match(/(?:^|\s)(\d{1,2})\s*(ม\.?\s*ค|ก\.?\s*พ|มี\.?\s*ค|เม\.?\s*ย|พ\.?\s*ค|มิ\.?\s*ย|ก\.?\s*ค|ส\.?\s*ค|ก\.?\s*ย|ต\.?\s*ค|พ\.?\s*ย|ธ\.?\s*ค)\.?\s*(\d{2,4})(?=\D|$)/i);
-    if (thaiDate) {
-      const key = thaiDate[2].replace(/\s/g,"").replace(/\.$/,"").replace(/\./g,".");
-      const month = thaiMonths[key];
-      let y = Number(thaiDate[3]);
-      if (y < 100) y += 2500;
-      if (y > 2400) y -= 543;
-      if (month) date = `${String(y).padStart(4,"0")}-${String(month).padStart(2,"0")}-${thaiDate[1].padStart(2,"0")}`;
-    }
-  }
-
-  // V13: tolerate OCR distortion such as "22 ก.ุย. 69".
-  // Use the stable consonants in the noisy month token; do not touch amount OCR.
-  if (!date) {
-    const noisyThaiDate = compact.match(/(?:^|\s)(\d{1,2})\s+([ก-๙.\u0E31-\u0E4E]{2,8})\s+(\d{2,4})(?=\D|$)/);
-    if (noisyThaiDate) {
-      const day = Number(noisyThaiDate[1]);
-      const token = noisyThaiDate[2].replace(/\s/g,"");
-      let y = Number(noisyThaiDate[3]);
-      if (y < 100) y += 2500;
-      if (y > 2400) y -= 543;
-      let month = 0;
-      if (/ก.*ย/.test(token)) month = 9;
-      else if (/ต.*ค/.test(token)) month = 10;
-      else if (/พ.*ย/.test(token)) month = 11;
-      else if (/ธ.*ค/.test(token)) month = 12;
-      else if (/ส.*ค/.test(token)) month = 8;
-      else if (/ก.*ค/.test(token)) month = 7;
-      else if (/เม.*ย/.test(token)) month = 4;
-      else if (/พ.*ค/.test(token)) month = 5;
-      else if (/ก.*พ/.test(token)) month = 2;
-      if (day >= 1 && day <= 31 && month && y >= 2000 && y <= 2200) {
-        date = `${String(y).padStart(4,"0")}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-      }
-    }
-  }
-
   const tm = compact.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)(?::([0-5]\d))?\b/);
   const time = tm ? `${tm[1].padStart(2,"0")}:${tm[2]}` : "";
 
@@ -172,11 +129,7 @@ function parseOcrText(text) {
     !/^(?:฿|THB)/i.test(line) &&
     !/^[xX*\-\d\s]+$/.test(line)
   );
-  const merchant = (
-    merchantCandidates.find(({line}) => /^[A-Z0-9&.'-]{2,}(?:\s+[A-Z0-9&.'-]{2,})+$/i.test(line) && !/(?:TTB|BANK|SUCCESS)/i.test(line)) ||
-    merchantCandidates.find(({line}) => /[A-Z]{2,}(?:\s+[A-Z0-9]{2,})+/i.test(line)) ||
-    merchantCandidates.find(({line}) => /[ก-๙A-Za-z]/.test(line))
-  )?.line || "";
+  const merchant = (merchantCandidates.find(({line}) => /[A-Z]{2,}(?:\s+[A-Z0-9]{2,})+/i.test(line)) || merchantCandidates.find(({line}) => /[ก-๙A-Za-z]/.test(line)))?.line || "";
   return { amount, date, time, reference, merchant, rawText: text };
 }
 
@@ -287,7 +240,7 @@ function categoryButtons() { return `<div class="category-grid">${categories.map
 function keepDraftFields() { const form=document.querySelector("#transaction-form"); if (!form) return; const data=new FormData(form); draft={...draft, amount:data.get("amount") || "", merchant:data.get("merchant") || "", date:data.get("date") || localDate(), time:data.get("time") || "", note:data.get("note") || "", reference:data.get("reference") || ""}; }
 function ocrDebugHtml() { if (!ocrState.rawText && !(ocrState.amountTexts||[]).length) return ""; return `<details class="ocr-debug" open><summary>🔎 Debug OCR (ชั่วคราว)</summary><p class="hint">ข้อความดิบที่ OCR อ่านได้ — ส่งส่วนนี้มาให้ฉันดูได้</p><strong>ทั้งสลิป</strong><pre>${escapeHtml(ocrState.rawText || "(ไม่มีข้อความ)")}</pre><strong>รอบค้นหายอด</strong><pre>${escapeHtml((ocrState.amountTexts||[]).join("\n\n") || "(ไม่ได้รัน/ไม่มีข้อความ)")}</pre></details>`; }
 function ocrStatusHtml() { if (ocrState.status === "processing") return `<div class="ocr-status processing">${escapeHtml(ocrState.message || "กำลังอ่านข้อความสลิปในอุปกรณ์…")}</div>`; if (ocrState.status === "done") return `<div class="ocr-status success">${escapeHtml(ocrState.message)}</div>`; if (ocrState.status === "error") return `<div class="ocr-status warning">${escapeHtml(ocrState.message)} กรุณากรอกหรือแก้ไขข้อมูลด้านล่าง</div>`; return ''; }
-async function renderForm(importing=false) { const confirmLabel=importing?'ยืนยันและบันทึก':'บันทึกรายการ'; app.innerHTML=`<header class="page-head"><button class="back" data-nav="home">←</button><div><p class="eyebrow">${importing?'ตรวจสอบก่อนบันทึก':'บันทึกให้เร็ว'}</p><h1>${importing?'ตรวจสอบรายการ':'เพิ่มรายการ'}</h1></div></header><form id="transaction-form" class="form-card"><div class="type-toggle"><button type="button" data-type="expense" class="${draft.type==='expense'?'selected':''}">รายจ่าย</button><button type="button" data-type="income" class="${draft.type==='income'?'selected':''}">รายรับ</button></div>${importing?`${ocrStatusHtml()}<p class="hint">OCR เป็นเพียงข้อมูลเสนอแนะ โปรดตรวจสอบ แก้ไข และเลือกหมวดหมู่ด้วยตัวเองก่อนบันทึก</p>`:''}<label class="field">จำนวนเงิน<input class="amount-input" name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" value="${draft.amount}" required autofocus /></label><label class="field">เลือกหมวดหมู่${categoryButtons()}</label><label class="field">ชื่อร้าน / ผู้รับเงิน<input name="merchant" placeholder="เช่น 7-Eleven" value="${escapeHtml(draft.merchant)}" /></label><div class="filter-grid"><label class="field">วันที่<input name="date" type="date" value="${draft.date}" required /></label><label class="field">เวลา<input name="time" type="time" value="${draft.time}" /></label></div>${importing?`<label class="field">เลขอ้างอิง (ถ้ามี)<input name="reference" placeholder="เลขอ้างอิงจากสลิป" value="${escapeHtml(draft.reference || '')}" /></label>`:''}<label class="field">หมายเหตุ (ไม่บังคับ)<textarea name="note" rows="2" placeholder="เพิ่มรายละเอียดได้">${escapeHtml(draft.note)}</textarea></label>${receiptBlob?`<img class="receipt-preview" src="${URL.createObjectURL(receiptBlob)}" alt="รูปสลิปที่เลือก" /><button class="secondary" type="button" data-change-receipt>เปลี่ยนรูปสลิป</button>`:`<button class="secondary" type="button" data-import>📷 เลือกรูปสลิป</button>`}<button class="primary save" type="submit">${confirmLabel}</button>${editingId?'<button class="secondary save" type="button" data-cancel-edit>ยกเลิก</button>':''}</form>`; }
+async function renderForm(importing=false) { const confirmLabel=importing?'ยืนยันและบันทึก':'บันทึกรายการ'; app.innerHTML=`<header class="page-head"><button class="back" data-nav="home">←</button><div><p class="eyebrow">${importing?'ตรวจสอบก่อนบันทึก':'บันทึกให้เร็ว'}</p><h1>${importing?'ตรวจสอบรายการ':'เพิ่มรายการ'}</h1></div></header><form id="transaction-form" class="form-card"><div class="type-toggle"><button type="button" data-type="expense" class="${draft.type==='expense'?'selected':''}">รายจ่าย</button><button type="button" data-type="income" class="${draft.type==='income'?'selected':''}">รายรับ</button></div>${importing?`${ocrStatusHtml()}${ocrDebugHtml()}<p class="hint">OCR เป็นเพียงข้อมูลเสนอแนะ โปรดตรวจสอบ แก้ไข และเลือกหมวดหมู่ด้วยตัวเองก่อนบันทึก</p>`:''}<label class="field">จำนวนเงิน<input class="amount-input" name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" value="${draft.amount}" required autofocus /></label><label class="field">เลือกหมวดหมู่${categoryButtons()}</label><label class="field">ชื่อร้าน / ผู้รับเงิน<input name="merchant" placeholder="เช่น 7-Eleven" value="${escapeHtml(draft.merchant)}" /></label><div class="filter-grid"><label class="field">วันที่<input name="date" type="date" value="${draft.date}" required /></label><label class="field">เวลา<input name="time" type="time" value="${draft.time}" /></label></div>${importing?`<label class="field">เลขอ้างอิง (ถ้ามี)<input name="reference" placeholder="เลขอ้างอิงจากสลิป" value="${escapeHtml(draft.reference || '')}" /></label>`:''}<label class="field">หมายเหตุ (ไม่บังคับ)<textarea name="note" rows="2" placeholder="เพิ่มรายละเอียดได้">${escapeHtml(draft.note)}</textarea></label>${receiptBlob?`<img class="receipt-preview" src="${URL.createObjectURL(receiptBlob)}" alt="รูปสลิปที่เลือก" /><button class="secondary" type="button" data-change-receipt>เปลี่ยนรูปสลิป</button>`:`<button class="secondary" type="button" data-import>📷 เลือกรูปสลิป</button>`}<button class="primary save" type="submit">${confirmLabel}</button>${editingId?'<button class="secondary save" type="button" data-cancel-edit>ยกเลิก</button>':''}</form>`; }
 async function renderHistory() { const list=await transactions(); const f=historyFilters; const filtered=list.filter(t=> (!f.query || `${t.merchant} ${categoryOf(t.category).name}`.toLowerCase().includes(f.query.toLowerCase())) && (f.type==='all'||t.type===f.type) && (f.category==='all'||t.category===f.category) && (!f.date||t.date===f.date)); app.innerHTML=layout(`<header class="topbar"><div><p class="eyebrow">ค้นหาและจัดการ</p><h1>รายการทั้งหมด</h1></div><button class="primary" data-add>＋</button></header><section class="filter-grid"><input data-filter="query" value="${escapeHtml(f.query)}" placeholder="ค้นหาร้านหรือหมวดหมู่" /><select data-filter="type"><option value="all">ทุกประเภท</option><option value="income" ${f.type==='income'?'selected':''}>รายรับ</option><option value="expense" ${f.type==='expense'?'selected':''}>รายจ่าย</option></select><select data-filter="category"><option value="all">ทุกหมวดหมู่</option>${categories.map(c=>`<option value="${c.id}" ${f.category===c.id?'selected':''}>${c.icon} ${c.name}</option>`).join("")}</select><input data-filter="date" type="date" value="${f.date}" /></section>${filtered.map(t=>itemHtml(t,true)).join("") || '<div class="empty">ไม่พบรายการตามตัวกรอง</div>'}`,"history"); }
 async function renderSummary() {
   const list = await transactions();
