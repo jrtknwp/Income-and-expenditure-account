@@ -163,6 +163,40 @@ async function recognizeAmountSeparately(worker,file) {
   } finally { await worker.setParameters({tessedit_char_whitelist:"",tessedit_pageseg_mode:"3",preserve_interword_spaces:"0"}).catch(()=>{}); }
   ocrState.amountTexts=debugTexts; return best;
 }
+
+function pickAmountFromCropTexts(amountTexts) {
+  const candidates = [];
+
+  for (const cropText of (amountTexts || [])) {
+    const lines = String(cropText || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+
+    for (const line of lines) {
+      // Never join numbers across lines. Reject date/time-ish or obviously noisy lines.
+      if (/[\/:]/.test(line)) continue;
+      if ((line.match(/[.,]/g) || []).length > 2) continue;
+
+      // A money candidate should be a standalone decimal on ONE OCR line.
+      const matches = [...line.matchAll(/(?:^|[^\d])(\d{1,6}[.,]\d{2})(?!\d)/g)];
+      for (const m of matches) {
+        const raw = m[1].replace(",", ".");
+        const value = Number(raw);
+        if (!Number.isFinite(value) || value <= 0 || value > 1000000) continue;
+
+        let score = 100;
+        // Clean standalone line such as "95.00" is strongly preferred.
+        if (line.replace(/\s/g, "") === m[1]) score += 100;
+        // Common fee value must never beat a real positive amount.
+        if (value === 0) score -= 1000;
+
+        candidates.push({ value, score, line });
+      }
+    }
+  }
+
+  candidates.sort((a,b) => b.score - a.score || a.value - b.value);
+  return candidates[0]?.value ? String(candidates[0].value.toFixed(2)) : "";
+}
+
 async function runOcr(file) {
   ocrState={status:"processing",message:"กำลังเตรียม OCR ภาษาไทย…",rawText:"",amountTexts:[]}; screen="import"; renderForm(true);
   try {
@@ -171,7 +205,15 @@ async function runOcr(file) {
     // V8: 0.00 is never a useful paid amount. Always run the dedicated amount pass when the full-slip OCR found nothing or zero.
     if(!amount || Number(amount) <= 0) amount=await recognizeAmountSeparately(worker,file);
     if(amount)draft.amount=amount; if(parsed.date)draft.date=parsed.date; if(parsed.time)draft.time=parsed.time; if(parsed.merchant)draft.merchant=parsed.merchant; if(parsed.reference)draft.reference=parsed.reference;
-    ocrState={...ocrState,status:"done",message:`อ่านสลิปเสร็จแล้ว${amount?` · พบยอด ${money(amount)}`:" · ยังไม่พบยอด กรุณากรอกยอดเงิน"}`,rawText:result.data?.text||ocrState.rawText||""}; renderForm(true);
+    
+    // V11: prefer a clean, standalone decimal from the amount crops.
+    // Example debug: "95.00" wins; noisy date/time text like "22..69,12132." is ignored.
+    const cropAmount = pickAmountFromCropTexts(ocrState.amountTexts || []);
+    if (cropAmount) {
+      amount = cropAmount;
+      draft.amount = cropAmount;
+    }
+ocrState={...ocrState,status:"done",message:`อ่านสลิปเสร็จแล้ว${amount?` · พบยอด ${money(amount)}`:" · ยังไม่พบยอด กรุณากรอกยอดเงิน"}`,rawText:result.data?.text||ocrState.rawText||""}; renderForm(true);
   } catch(error){console.error(error);ocrState={status:"error",message:`OCR ไม่สำเร็จ (${error?.message||"ไม่ทราบสาเหตุ"})`};renderForm(true);}
 }
 
