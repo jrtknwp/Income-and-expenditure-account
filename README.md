@@ -23,3 +23,7 @@ Workflow: เลือกรูปสลิป → OCR อ่านข้อค�
 ควรเปิดผ่าน static web server หรือ HTTPS เพื่อให้ Web Worker, WASM และ PWA ทำงานสมบูรณ์ เช่น VS Code Live Server หรือ static hosting
 
 การเปิด `index.html` โดยตรงด้วย `file://` อาจทำให้ OCR หรือ service worker ใช้งานไม่ได้จากข้อจำกัดของเบราว์เซอร์
+
+
+## V6
+Improved Thai slip amount detection: prioritizes standalone payment amounts, ignores fee/reference rows, and improves merchant selection.

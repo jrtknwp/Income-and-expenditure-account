@@ -66,19 +66,51 @@ async function getOcrWorker() {
 function parseOcrText(text) {
   const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   const compact = lines.join(" ");
-  const amountMatches = [
-    /(?:ยอดเงิน|จำนวนเงิน|จำนวน|รวม|total|amount|payment)[^0-9]{0,20}([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)/i,
-    /(?:฿|THB)\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)/i,
-    /(^|\s)([0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2})(?=\s|$)/
-  ];
+
+  // Normalize common OCR mistakes in money-looking tokens, e.g. 95.OO -> 95.00.
+  const normalizeMoney = (value) => value
+    .replace(/[Oo]/g, "0")
+    .replace(/\s+(?=\d{2}\b)/g, ".")
+    .replace(/,/g, "")
+    .replace(/[^0-9.]/g, "");
+
   let amount = "";
-  for (const re of amountMatches) { const m = compact.match(re); if (m) { amount = (m[2] || m[1]).replace(/,/g, ""); break; } }
+  let bestScore = -Infinity;
+  lines.forEach((line, index) => {
+    // Fees are not the paid amount on Thai bank slips.
+    if (/(?:ค่าธรรมเนียม|fee)/i.test(line)) return;
+    // Avoid IDs/account/reference rows which often contain long digit strings.
+    if (/(?:รหัสร้านค้า|รหัสธุรกรรม|รหัสอ้างอิง|เลขอ้างอิง|reference|transaction|บัญชี)/i.test(line)) return;
+
+    const candidates = line.match(/(?:\d{1,3}(?:,\d{3})*|\d+)[.,][0-9Oo]{2}\b/g) || [];
+    for (const raw of candidates) {
+      const normalized = normalizeMoney(raw.replace(/,(?=\d{2}\b)/, "."));
+      const value = Number(normalized);
+      if (!Number.isFinite(value) || value <= 0 || value > 10000000) continue;
+
+      let score = 10;
+      if (/(?:ยอดเงิน|จำนวนเงิน|ยอดชำระ|ยอดจ่าย|รวม|total|amount|payment|บาท|THB|฿)/i.test(line)) score += 100;
+      // Amounts on slips are commonly isolated on their own line and near the top.
+      if (line.replace(raw, "").trim().length <= 3) score += 45;
+      score += Math.max(0, 25 - index * 2);
+      // Prefer normal purchase-sized values over 0.xx noise when otherwise tied.
+      if (value >= 1) score += 5;
+
+      if (score > bestScore) { bestScore = score; amount = normalized; }
+    }
+  });
+
+  // Fallback for explicit labels where OCR may omit decimals.
+  if (!amount) {
+    const explicit = compact.match(/(?:ยอดเงิน|จำนวนเงิน|ยอดชำระ|ยอดจ่าย|รวม|total|amount|payment)[^0-9]{0,20}([0-9]{1,3}(?:,[0-9]{3})*(?:[.,][0-9Oo]{1,2})?)/i);
+    if (explicit) amount = normalizeMoney(explicit[1].replace(/,(?=\d{2}\b)/, "."));
+  }
 
   let date = "";
   const dm = compact.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/);
   if (dm) {
     let y = Number(dm[3]);
-    if (y < 100) y += 2000;
+    if (y < 100) y += 2500; // Thai slips commonly print 2-digit Buddhist year, e.g. 69.
     if (y > 2400) y -= 543;
     date = `${y.toString().padStart(4,"0")}-${dm[2].padStart(2,"0")}-${dm[1].padStart(2,"0")}`;
   }
@@ -86,11 +118,18 @@ function parseOcrText(text) {
   const tm = compact.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)(?::([0-5]\d))?\b/);
   const time = tm ? `${tm[1].padStart(2,"0")}:${tm[2]}` : "";
 
-  const referenceMatch = compact.match(/(?:reference|ref|เลขอ้างอิง|รายการ|transaction)[^A-Z0-9ก-๙]{0,12}([A-Z0-9]{8,})/i);
+  const referenceMatch = compact.match(/(?:reference|ref|เลขอ้างอิง|รหัสอ้างอิง)[^A-Z0-9ก-๙]{0,12}([A-Z0-9]{8,})/i);
   const reference = referenceMatch ? referenceMatch[1] : "";
 
-  const ignored = /^(?:จำนวนเงิน|ยอดเงิน|จำนวน|รวม|total|amount|payment|วันที่|เวลา|date|time|reference|ref|เลขอ้างอิง|รายการ|transaction|promptpay|พร้อมเพย์|ธนาคาร|bank)$/i;
-  const merchant = lines.find(line => line.length >= 2 && line.length <= 60 && !ignored.test(line) && !/^\d[\d\s.,:/-]*$/.test(line) && !/^(?:฿|THB)/i.test(line)) || "";
+  // Prefer an English/Thai merchant-like line around the transfer parties rather than the first OCR line.
+  const merchantCandidates = lines.map((line, index) => ({ line, index })).filter(({line}) =>
+    line.length >= 3 && line.length <= 60 &&
+    !/(?:จ่ายบิลสำเร็จ|โอนเงินสำเร็จ|ค่าธรรมเนียม|รายละเอียด|รหัสร้านค้า|รหัสธุรกรรม|รหัสอ้างอิง|เลขอ้างอิง|ธนาคาร|promptpay|พร้อมเพย์)/i.test(line) &&
+    !/^\d[\d\s.,:/()-]*$/.test(line) &&
+    !/^(?:฿|THB)/i.test(line) &&
+    !/^[xX*\-\d\s]+$/.test(line)
+  );
+  const merchant = (merchantCandidates.find(({line}) => /[A-Z]{2,}(?:\s+[A-Z0-9]{2,})+/i.test(line)) || merchantCandidates.find(({line}) => /[ก-๙A-Za-z]/.test(line)))?.line || "";
   return { amount, date, time, reference, merchant, rawText: text };
 }
 
