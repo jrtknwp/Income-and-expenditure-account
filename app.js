@@ -7,14 +7,48 @@ let db; let screen = "home"; let editingId = null; let draft = newDraft(); let r
 const app = document.querySelector("#app"); const receiptInput = document.querySelector("#receipt-input");
 let ocrWorkerPromise = null;
 
-async function getOcrWorker() {
+async let tesseractLoadPromise = null;
+
+async function ensureTesseract() {
+  if (window.Tesseract) return window.Tesseract;
+  if (tesseractLoadPromise) return tesseractLoadPromise;
+
+  tesseractLoadPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-tesseract-local]');
+    if (existing) {
+      existing.addEventListener("load", () => window.Tesseract ? resolve(window.Tesseract) : reject(new Error("โหลด Tesseract.js แล้วแต่ไม่พบตัวแปร Tesseract")), { once:true });
+      existing.addEventListener("error", () => reject(new Error("โหลดไฟล์ OCR ไม่สำเร็จ")), { once:true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = new URL("./ocr/tesseract.min.js", import.meta.url).href;
+    script.async = true;
+    script.dataset.tesseractLocal = "1";
+    script.onload = () => window.Tesseract
+      ? resolve(window.Tesseract)
+      : reject(new Error("ไฟล์ Tesseract.js โหลดแล้ว แต่ไม่พบตัวแปร Tesseract"));
+    script.onerror = () => reject(new Error(`เปิดไฟล์ Tesseract.js ไม่ได้: ${script.src}`));
+    document.head.appendChild(script);
+  });
+
+  try { return await tesseractLoadPromise; }
+  catch (error) { tesseractLoadPromise = null; throw error; }
+}
+
+function getOcrWorker() {
   if (ocrWorkerPromise) return ocrWorkerPromise;
   ocrWorkerPromise = (async () => {
-    if (!window.Tesseract) throw new Error("ไม่พบ Tesseract.js");
-    const worker = await window.Tesseract.createWorker("tha", 1, {
-      workerPath: "./ocr/worker.min.js",
-      langPath: "./ocr/lang",
-      corePath: "./ocr/core",
+    const Tesseract = await ensureTesseract();
+    const base = new URL("./ocr/", import.meta.url);
+    const workerPath = new URL("worker.min.js", base).href;
+    const langPath = new URL("lang/", base).href;
+    const corePath = new URL("core/tesseract-core-simd-lstm.wasm.js", base).href;
+
+    const worker = await Tesseract.createWorker("tha", 1, {
+      workerPath,
+      langPath,
+      corePath,
       gzip: false,
       logger: (m) => {
         if (m.status === "recognizing text" && typeof m.progress === "number") {
