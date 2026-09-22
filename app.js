@@ -132,6 +132,32 @@ function parseOcrText(text) {
     }
   }
 
+  // V13: tolerate OCR distortion such as "22 ก.ุย. 69".
+  // Use the stable consonants in the noisy month token; do not touch amount OCR.
+  if (!date) {
+    const noisyThaiDate = compact.match(/(?:^|\s)(\d{1,2})\s+([ก-๙.\u0E31-\u0E4E]{2,8})\s+(\d{2,4})(?=\D|$)/);
+    if (noisyThaiDate) {
+      const day = Number(noisyThaiDate[1]);
+      const token = noisyThaiDate[2].replace(/\s/g,"");
+      let y = Number(noisyThaiDate[3]);
+      if (y < 100) y += 2500;
+      if (y > 2400) y -= 543;
+      let month = 0;
+      if (/ก.*ย/.test(token)) month = 9;
+      else if (/ต.*ค/.test(token)) month = 10;
+      else if (/พ.*ย/.test(token)) month = 11;
+      else if (/ธ.*ค/.test(token)) month = 12;
+      else if (/ส.*ค/.test(token)) month = 8;
+      else if (/ก.*ค/.test(token)) month = 7;
+      else if (/เม.*ย/.test(token)) month = 4;
+      else if (/พ.*ค/.test(token)) month = 5;
+      else if (/ก.*พ/.test(token)) month = 2;
+      if (day >= 1 && day <= 31 && month && y >= 2000 && y <= 2200) {
+        date = `${String(y).padStart(4,"0")}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+      }
+    }
+  }
+
   const tm = compact.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)(?::([0-5]\d))?\b/);
   const time = tm ? `${tm[1].padStart(2,"0")}:${tm[2]}` : "";
 
