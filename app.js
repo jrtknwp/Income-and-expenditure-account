@@ -133,26 +133,40 @@ function parseOcrText(text) {
   return { amount, date, time, reference, merchant, rawText: text };
 }
 
-async function runOcr(file) {
-  ocrState = { status:"processing", message:"กำลังเตรียม OCR ภาษาไทย…" };
-  screen = "import";
-  renderForm(true);
-  try {
-    const worker = await getOcrWorker();
-    const result = await worker.recognize(file);
-    const parsed = parseOcrText(result.data?.text || "");
-    if (parsed.amount) draft.amount = parsed.amount;
-    if (parsed.date) draft.date = parsed.date;
-    if (parsed.time) draft.time = parsed.time;
-    if (parsed.merchant) draft.merchant = parsed.merchant;
-    if (parsed.reference) draft.reference = parsed.reference;
-    ocrState = { status:"done", message:`อ่านสลิปเสร็จแล้ว${parsed.amount ? ` · พบยอด ${money(parsed.amount)}` : " · กรุณาตรวจสอบข้อมูล"}` };
-    renderForm(true);
-  } catch (error) {
-    console.error(error);
-    ocrState = { status:"error", message:`OCR ไม่สำเร็จ (${error?.message || "ไม่ทราบสาเหตุ"})` };
-    renderForm(true);
+async function makeAmountCrops(file) {
+  const bitmap = await createImageBitmap(file);
+  const bands = [{y:0.18,h:0.28},{y:0.25,h:0.28},{y:0.10,h:0.45}];
+  const crops = [];
+  for (const band of bands) {
+    const sy=Math.max(0,Math.floor(bitmap.height*band.y)), sh=Math.min(bitmap.height-sy,Math.floor(bitmap.height*band.h));
+    const sx=Math.floor(bitmap.width*0.05), sw=Math.floor(bitmap.width*0.90), scale=Math.max(1,Math.min(2.5,1800/sw));
+    const canvas=document.createElement("canvas"); canvas.width=Math.round(sw*scale); canvas.height=Math.round(sh*scale);
+    const ctx=canvas.getContext("2d",{willReadFrequently:true}); ctx.fillStyle="white"; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(bitmap,sx,sy,sw,sh,0,0,canvas.width,canvas.height); crops.push(canvas);
   }
+  bitmap.close?.(); return crops;
+}
+function extractAmountFromNumericText(text) {
+  const cleaned=String(text||"").replace(/[Oo]/g,"0").replace(/[Il|]/g,"1").replace(/(\d)\s*[.,]\s*(\d{2})\b/g,"$1.$2");
+  const values=[]; for(const match of cleaned.matchAll(/(?:^|\D)(\d{1,7}[.,]\d{2})(?=\D|$)/g)){const raw=match[1].replace(",","."),value=Number(raw);if(Number.isFinite(value)&&value>0&&value<=10000000)values.push({raw,value});}
+  values.sort((a,b)=>b.value-a.value); return values[0]?.raw||"";
+}
+async function recognizeAmountSeparately(worker,file) {
+  const crops=await makeAmountCrops(file); let best="";
+  try {
+    await worker.setParameters({tessedit_char_whitelist:"0123456789.,",tessedit_pageseg_mode:"6",preserve_interword_spaces:"1"});
+    for(let i=0;i<crops.length;i++){ocrState.message=`กำลังค้นหายอดเงิน… ${i+1}/${crops.length}`;if(screen==="import")renderForm(true);const result=await worker.recognize(crops[i]);const candidate=extractAmountFromNumericText(result.data?.text||"");if(candidate&&(!best||Number(candidate)>Number(best)))best=candidate;}
+  } finally { await worker.setParameters({tessedit_char_whitelist:"",tessedit_pageseg_mode:"3",preserve_interword_spaces:"0"}).catch(()=>{}); }
+  return best;
+}
+async function runOcr(file) {
+  ocrState={status:"processing",message:"กำลังเตรียม OCR ภาษาไทย…"}; screen="import"; renderForm(true);
+  try {
+    const worker=await getOcrWorker(); const result=await worker.recognize(file); const parsed=parseOcrText(result.data?.text||"");
+    let amount=parsed.amount; if(!amount) amount=await recognizeAmountSeparately(worker,file);
+    if(amount)draft.amount=amount; if(parsed.date)draft.date=parsed.date; if(parsed.time)draft.time=parsed.time; if(parsed.merchant)draft.merchant=parsed.merchant; if(parsed.reference)draft.reference=parsed.reference;
+    ocrState={status:"done",message:`อ่านสลิปเสร็จแล้ว${amount?` · พบยอด ${money(amount)}`:" · ยังไม่พบยอด กรุณากรอกยอดเงิน"}`}; renderForm(true);
+  } catch(error){console.error(error);ocrState={status:"error",message:`OCR ไม่สำเร็จ (${error?.message||"ไม่ทราบสาเหตุ"})`};renderForm(true);}
 }
 
 const money = (n) => new Intl.NumberFormat("th-TH", { style:"currency", currency:"THB", maximumFractionDigits:2 }).format(Number(n || 0));
