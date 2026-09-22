@@ -103,7 +103,7 @@ function parseOcrText(text) {
   // Fallback for explicit labels where OCR may omit decimals.
   if (!amount) {
     const explicit = compact.match(/(?:ยอดเงิน|จำนวนเงิน|ยอดชำระ|ยอดจ่าย|รวม|total|amount|payment)[^0-9]{0,20}([0-9]{1,3}(?:,[0-9]{3})*(?:[.,][0-9Oo]{1,2})?)/i);
-    if (explicit) amount = normalizeMoney(explicit[1].replace(/,(?=\d{2}\b)/, "."));
+    if (explicit) { const candidate = normalizeMoney(explicit[1].replace(/,(?=\d{2}\b)/, ".")); if (Number(candidate) > 0) amount = candidate; }
   }
 
   let date = "";
@@ -142,7 +142,11 @@ async function makeAmountCrops(file) {
     const sx=Math.floor(bitmap.width*0.05), sw=Math.floor(bitmap.width*0.90), scale=Math.max(1,Math.min(2.5,1800/sw));
     const canvas=document.createElement("canvas"); canvas.width=Math.round(sw*scale); canvas.height=Math.round(sh*scale);
     const ctx=canvas.getContext("2d",{willReadFrequently:true}); ctx.fillStyle="white"; ctx.fillRect(0,0,canvas.width,canvas.height);
-    ctx.drawImage(bitmap,sx,sy,sw,sh,0,0,canvas.width,canvas.height); crops.push(canvas);
+    ctx.drawImage(bitmap,sx,sy,sw,sh,0,0,canvas.width,canvas.height);
+    // V8: grayscale + contrast/threshold makes large dark amount digits stand out from decorative slip backgrounds.
+    const imageData=ctx.getImageData(0,0,canvas.width,canvas.height), data=imageData.data;
+    for(let p=0;p<data.length;p+=4){const gray=Math.round(data[p]*0.299+data[p+1]*0.587+data[p+2]*0.114);const v=gray<185?0:255;data[p]=data[p+1]=data[p+2]=v;}
+    ctx.putImageData(imageData,0,0); crops.push(canvas);
   }
   bitmap.close?.(); return crops;
 }
@@ -163,7 +167,9 @@ async function runOcr(file) {
   ocrState={status:"processing",message:"กำลังเตรียม OCR ภาษาไทย…"}; screen="import"; renderForm(true);
   try {
     const worker=await getOcrWorker(); const result=await worker.recognize(file); const parsed=parseOcrText(result.data?.text||"");
-    let amount=parsed.amount; if(!amount) amount=await recognizeAmountSeparately(worker,file);
+    let amount=parsed.amount;
+    // V8: 0.00 is never a useful paid amount. Always run the dedicated amount pass when the full-slip OCR found nothing or zero.
+    if(!amount || Number(amount) <= 0) amount=await recognizeAmountSeparately(worker,file);
     if(amount)draft.amount=amount; if(parsed.date)draft.date=parsed.date; if(parsed.time)draft.time=parsed.time; if(parsed.merchant)draft.merchant=parsed.merchant; if(parsed.reference)draft.reference=parsed.reference;
     ocrState={status:"done",message:`อ่านสลิปเสร็จแล้ว${amount?` · พบยอด ${money(amount)}`:" · ยังไม่พบยอด กรุณากรอกยอดเงิน"}`}; renderForm(true);
   } catch(error){console.error(error);ocrState={status:"error",message:`OCR ไม่สำเร็จ (${error?.message||"ไม่ทราบสาเหตุ"})`};renderForm(true);}
