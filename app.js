@@ -7,7 +7,7 @@ let db; let screen = "home"; let editingId = null; let draft = newDraft(); let r
 const app = document.querySelector("#app"); const receiptInput = document.querySelector("#receipt-input");
 let ocrWorkerPromise = null;
 
-async let tesseractLoadPromise = null;
+let tesseractLoadPromise = null;
 
 async function ensureTesseract() {
   if (window.Tesseract) return window.Tesseract;
