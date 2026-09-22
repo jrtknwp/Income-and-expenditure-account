@@ -166,12 +166,12 @@ async function recognizeAmountSeparately(worker,file) {
 async function runOcr(file) {
   ocrState={status:"processing",message:"กำลังเตรียม OCR ภาษาไทย…",rawText:"",amountTexts:[]}; screen="import"; renderForm(true);
   try {
-    const worker=await getOcrWorker(); const result=await worker.recognize(file); const fullText=result.data?.text||""; ocrState.rawText=fullText; const parsed=parseOcrText(fullText);
+    const worker=await getOcrWorker(); const result=await worker.recognize(file); ocrState.rawText=result.data?.text||""; const fullText=result.data?.text||""; ocrState.rawText=fullText; const parsed=parseOcrText(fullText);
     let amount=parsed.amount;
     // V8: 0.00 is never a useful paid amount. Always run the dedicated amount pass when the full-slip OCR found nothing or zero.
     if(!amount || Number(amount) <= 0) amount=await recognizeAmountSeparately(worker,file);
     if(amount)draft.amount=amount; if(parsed.date)draft.date=parsed.date; if(parsed.time)draft.time=parsed.time; if(parsed.merchant)draft.merchant=parsed.merchant; if(parsed.reference)draft.reference=parsed.reference;
-    ocrState={status:"done",message:`อ่านสลิปเสร็จแล้ว${amount?` · พบยอด ${money(amount)}`:" · ยังไม่พบยอด กรุณากรอกยอดเงิน"}`}; renderForm(true);
+    ocrState={...ocrState,status:"done",message:`อ่านสลิปเสร็จแล้ว${amount?` · พบยอด ${money(amount)}`:" · ยังไม่พบยอด กรุณากรอกยอดเงิน"}`,rawText:result.data?.text||ocrState.rawText||""}; renderForm(true);
   } catch(error){console.error(error);ocrState={status:"error",message:`OCR ไม่สำเร็จ (${error?.message||"ไม่ทราบสาเหตุ"})`};renderForm(true);}
 }
 
