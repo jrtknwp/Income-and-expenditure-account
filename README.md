@@ -10,20 +10,16 @@
 
 เปิด `index.html` โดยตรงยังใช้บันทึกรายการได้ในเบราว์เซอร์ส่วนใหญ่ แต่ service worker/PWA อาจไม่ทำงานเนื่องจากข้อจำกัดของเบราว์เซอร์
 
-## OCR สลิป (Local-only)
+## Deploy บน GitHub Pages
 
-เวอร์ชันนี้เชื่อม Tesseract.js แบบ local เข้ากับปุ่ม “นำเข้าสลิป” แล้ว โดยใช้โมเดลภาษาไทย `tha.traineddata` ที่อยู่ใน `ocr/lang/` และใช้ core/worker ที่รวมมาในโปรเจกต์
+แอปนี้ใช้ path แบบ relative ทั้งหมด จึงรองรับการเผยแพร่ใต้ repository path โดยตรง เช่น `https://jrtknwp.github.io/Income-and-expenditure-account/` ไม่ต้องแก้ path ของ JavaScript, CSS, manifest, service worker หรือ OCR อีกครั้ง
 
-Workflow: เลือกรูปสลิป → OCR อ่านข้อความในอุปกรณ์ → พยายามดึงจำนวนเงิน วันที่ เวลา ชื่อร้าน/ผู้รับ และเลขอ้างอิง → แสดงหน้า Review → ผู้ใช้ตรวจ/แก้ไขข้อมูล → เลือกหมวดหมู่เอง → ยืนยันและบันทึก
+หลัง push ไฟล์ในโฟลเดอร์นี้ไปยัง branch ที่ตั้งค่าไว้สำหรับ GitHub Pages แล้ว ให้เปิด URL ข้างต้นผ่าน Chrome บน Android เลือกเมนู `⋮` และกด **ติดตั้งแอป** (หรือ **Add to Home screen**) ข้อมูล IndexedDB และรูปสลิปจะอยู่เฉพาะในเบราว์เซอร์/อุปกรณ์นั้น
 
-**สำคัญ:** รุ่นนี้ตั้งใจใช้โมเดล `tha` เท่านั้น เพราะแพ็กเกจนี้มี `tha.traineddata` อยู่จริงและไม่มี `eng.traineddata` จึงไม่เรียก `tha+eng` เพื่อป้องกัน OCR ล้มเหลวจากไฟล์ภาษาอังกฤษที่หายไป ผล OCR ต้องตรวจสอบก่อนบันทึกทุกครั้ง โดยเฉพาะชื่อร้านและเลขอ้างอิงที่เป็นภาษาอังกฤษ
+Service worker ใช้ชื่อ cache เป็นเวอร์ชัน (`my-account-v18-pwa`) และหน้า HTML โหลดจากเครือข่ายก่อนเมื่อออนไลน์ เพื่อให้ deployment ใหม่ไม่ค้างใช้ `app.js` รุ่นก่อนหน้า หากมีการเปลี่ยนไฟล์ครั้งถัดไป ให้เพิ่มทั้ง cache version ใน `sw.js` และ query version ของ `app.js` / `styles.css` ใน `index.html` พร้อมกัน
 
-## เปิดใช้งาน
+## OCR แบบ local-only
 
-ควรเปิดผ่าน static web server หรือ HTTPS เพื่อให้ Web Worker, WASM และ PWA ทำงานสมบูรณ์ เช่น VS Code Live Server หรือ static hosting
+แอป bundle Tesseract.js, WebAssembly และโมเดลภาษาไทย `tha.traineddata` ไว้ในโฟลเดอร์ `ocr/` แล้ว รูปสลิปจะประมวลผลใน Web Worker ของเบราว์เซอร์บนอุปกรณ์และไม่ถูกอัปโหลดหรือส่งไปยัง API ภายนอก
 
-การเปิด `index.html` โดยตรงด้วย `file://` อาจทำให้ OCR หรือ service worker ใช้งานไม่ได้จากข้อจำกัดของเบราว์เซอร์
-
-
-## V6
-Improved Thai slip amount detection: prioritizes standalone payment amounts, ignores fee/reference rows, and improves merchant selection.
+OCR พยายามเสนอจำนวนเงิน วันที่ เวลา ชื่อร้าน/ผู้รับเงิน และเลขอ้างอิง แต่เป็นเพียงข้อมูลเสนอแนะเสมอ: ผู้ใช้แก้ไขทุกช่อง เลือกหมวดหมู่ด้วยตัวเอง และกด “ยืนยันและบันทึก” ก่อนสร้างรายการ รูปสลิปถูกเก็บเป็น Blob ใน IndexedDB พร้อมเลขอ้างอิงของ transaction
