@@ -16,7 +16,19 @@
 
 หลัง push ไฟล์ในโฟลเดอร์นี้ไปยัง branch ที่ตั้งค่าไว้สำหรับ GitHub Pages แล้ว ให้เปิด URL ข้างต้นผ่าน Chrome บน Android เลือกเมนู `⋮` และกด **ติดตั้งแอป** (หรือ **Add to Home screen**) ข้อมูล IndexedDB และรูปสลิปจะอยู่เฉพาะในเบราว์เซอร์/อุปกรณ์นั้น
 
-Service worker ใช้ชื่อ cache เป็นเวอร์ชัน (`my-account-v18-pwa`) และหน้า HTML โหลดจากเครือข่ายก่อนเมื่อออนไลน์ เพื่อให้ deployment ใหม่ไม่ค้างใช้ `app.js` รุ่นก่อนหน้า หากมีการเปลี่ยนไฟล์ครั้งถัดไป ให้เพิ่มทั้ง cache version ใน `sw.js` และ query version ของ `app.js` / `styles.css` ใน `index.html` พร้อมกัน
+Service worker ใช้ชื่อ cache เป็นเวอร์ชัน (`my-account-v18-ocr-small`) และหน้า HTML โหลดจากเครือข่ายก่อนเมื่อออนไลน์ เพื่อให้ deployment ใหม่ไม่ค้างใช้ `app.js` รุ่นก่อนหน้า หากมีการเปลี่ยนไฟล์ครั้งถัดไป ให้เพิ่มทั้ง cache version ใน `sw.js` และ query version ของ `app.js` / `styles.css` ใน `index.html` พร้อมกัน
+
+## OCR production bundle
+
+สำหรับ deploy รุ่น V18 ให้ใช้โฟลเดอร์ `ocr-production/` เท่านั้น (อยู่ใน ZIP `my-account-github-pages-v18-small.zip`) โดย `app.js` โหลดไฟล์เหล่านี้ผ่าน relative path:
+
+- `ocr-production/tesseract.min.js`
+- `ocr-production/worker.min.js`
+- `ocr-production/core/tesseract-core-simd.wasm.js`
+- `ocr-production/core/tesseract-core-simd.wasm`
+- `ocr-production/lang/tha.traineddata`
+
+ไม่ต้องอัปโหลดโฟลเดอร์ `ocr/` เดิม เพราะเป็นชุด runtime หลาย variant สำหรับเก็บอ้างอิงในเครื่องและไม่ได้ถูกเรียกใช้โดย V18 production bundle
 
 ## OCR แบบ local-only
 

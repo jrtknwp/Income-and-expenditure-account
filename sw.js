@@ -1,5 +1,5 @@
-const CACHE = "my-account-v18-pwa";
-const ASSETS = ["./", "./index.html", "./styles.css?v=18", "./app.js?v=18", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png", "./ocr/tesseract.min.js", "./ocr/worker.min.js", "./ocr/lang/tha.traineddata", "./ocr/core/tesseract-core.wasm.js", "./ocr/core/tesseract-core.wasm", "./ocr/core/tesseract-core-lstm.wasm.js", "./ocr/core/tesseract-core-lstm.wasm", "./ocr/core/tesseract-core-simd.wasm.js", "./ocr/core/tesseract-core-simd.wasm", "./ocr/core/tesseract-core-simd-lstm.wasm.js", "./ocr/core/tesseract-core-simd-lstm.wasm", "./ocr/core/tesseract-core-relaxedsimd.wasm.js", "./ocr/core/tesseract-core-relaxedsimd.wasm", "./ocr/core/tesseract-core-relaxedsimd-lstm.wasm.js", "./ocr/core/tesseract-core-relaxedsimd-lstm.wasm"];
+const CACHE = "my-account-v18-ocr-small";
+const ASSETS = ["./", "./index.html", "./styles.css?v=18", "./app.js?v=18", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png", "./ocr-production/tesseract.min.js", "./ocr-production/worker.min.js", "./ocr-production/lang/tha.traineddata", "./ocr-production/core/tesseract-core-simd.wasm.js", "./ocr-production/core/tesseract-core-simd.wasm"];
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (event) => event.waitUntil(Promise.all([
   caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))),

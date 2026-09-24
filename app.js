@@ -16,7 +16,7 @@ async function ensureTesseract() {
   if (tesseractLoadPromise) return tesseractLoadPromise;
   tesseractLoadPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = new URL("./ocr/tesseract.min.js", import.meta.url).href;
+    script.src = new URL("./ocr-production/tesseract.min.js", import.meta.url).href;
     script.async = true;
     script.onload = () => window.Tesseract ? resolve(window.Tesseract) : reject(new Error("ไม่พบ Tesseract.js"));
     script.onerror = () => reject(new Error("โหลด OCR runtime ในเครื่องไม่สำเร็จ"));
@@ -29,10 +29,10 @@ async function getOcrWorker() {
   if (ocrWorkerPromise) return ocrWorkerPromise;
   ocrWorkerPromise = (async () => {
     const Tesseract = await ensureTesseract();
-    const base = new URL("./ocr/", import.meta.url);
+    const base = new URL("./ocr-production/", import.meta.url);
     return Tesseract.createWorker("tha", 1, {
       workerPath: new URL("worker.min.js", base).href,
-      corePath: new URL("core/", base).href,
+      corePath: new URL("core/tesseract-core-simd.wasm.js", base).href,
       langPath: new URL("lang/", base).href,
       gzip: false,
       logger: (event) => {
