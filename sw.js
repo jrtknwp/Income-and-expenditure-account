@@ -1,5 +1,5 @@
-const CACHE = "my-account-v19-expense-detail";
-const ASSETS = ["./", "./index.html", "./styles.css?v=19", "./app.js?v=19", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png", "./ocr-production/tesseract.min.js", "./ocr-production/worker.min.js", "./ocr-production/lang/tha.traineddata", "./ocr-production/core/tesseract-core-simd.wasm.js", "./ocr-production/core/tesseract-core-simd.wasm"];
+const CACHE = "my-account-v20-history-export";
+const ASSETS = ["./", "./index.html", "./styles.css?v=20", "./app.js?v=20", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png", "./ocr-production/tesseract.min.js", "./ocr-production/worker.min.js", "./ocr-production/lang/tha.traineddata", "./ocr-production/core/tesseract-core-simd.wasm.js", "./ocr-production/core/tesseract-core-simd.wasm"];
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (event) => event.waitUntil(Promise.all([
   caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))),
